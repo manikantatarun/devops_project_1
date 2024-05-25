@@ -1,0 +1,9 @@
+terraform
+*.hcl
+*.info
+.terraform/
+*.tfplan
+*.tfstate*
+.env
+
+
