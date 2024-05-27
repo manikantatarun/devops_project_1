@@ -147,12 +147,21 @@
       apt:
         update_cache: yes
 
-    - name: Install kubectl
+    - name: Install kubelet and kubeadm
       apt:
-        name: kubectl
+        name: "{{ item }}"
         state: present
+      loop:
+        - kubelet
+        - kubeadm
+        - kubectl
     - name: Ensure Jenkins is accessible
       wait_for:
         port: 8080
+        state: started
+        timeout: 300
+    - name: Ensure Sonarqube is accessible
+      wait_for:
+        port: 9000
         state: started
         timeout: 300
