@@ -1,7 +1,9 @@
+# Generate random pet name for the resource group
 resource "random_pet" "rg_name" {
   prefix = var.resource_group_name_prefix
 }
 
+# Create resource group
 resource "azurerm_resource_group" "rg" {
   location = var.resource_group_location
   name     = random_pet.rg_name.id
@@ -48,6 +50,54 @@ resource "azurerm_network_security_group" "my_terraform_nsg" {
     source_address_prefix      = "*"
     destination_address_prefix = "*"
   }
+
+  security_rule {
+    name                       = "Jenkins"
+    priority                   = 1002
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "8080"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+
+  security_rule {
+    name                       = "SonarQube"
+    priority                   = 1003
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "9000"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+
+  security_rule {
+    name                       = "Kubernetes"
+    priority                   = 1004
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "6443"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+
+  security_rule {
+    name                       = "HTTP"
+    priority                   = 1005
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "80"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
 }
 
 # Create network interface
@@ -89,7 +139,7 @@ resource "azurerm_storage_account" "my_storage_account" {
   account_replication_type = "LRS"
 }
 
-# Create virtual machine
+# Create virtual machine with password authentication
 resource "azurerm_linux_virtual_machine" "my_terraform_vm" {
   name                  = "myVM"
   location              = azurerm_resource_group.rg.location
@@ -112,13 +162,35 @@ resource "azurerm_linux_virtual_machine" "my_terraform_vm" {
 
   computer_name  = "hostname"
   admin_username = var.username
+  disable_password_authentication = true
 
   admin_ssh_key {
     username   = var.username
-    public_key = azapi_resource_action.ssh_public_key_gen.output.publicKey
+    public_key = file("~/.ssh/id_rsa.pub")
   }
+
+  custom_data = base64encode(<<-EOF
+              #cloud-config
+              ssh_pwauth: False
+              EOF
+  )
 
   boot_diagnostics {
     storage_account_uri = azurerm_storage_account.my_storage_account.primary_blob_endpoint
   }
+
+  provisioner "local-exec" {
+  command = <<EOT
+    cat > ../2_Setup_Software/inventory.ini <<EOF
+    [vm]
+    ${azurerm_linux_virtual_machine.my_terraform_vm.public_ip_address} ansible_ssh_private_key_file=~/.ssh/id_rsa ansible_user=${var.username} ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+    EOF
+    cd ../2_Setup_Software && ansible-playbook -i inventory.ini main.yml
+  EOT
 }
+
+
+
+}
+
+
