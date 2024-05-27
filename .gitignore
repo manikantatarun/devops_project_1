@@ -6,5 +6,6 @@ terraform
 *.tfstate*
 .env
 env/
+*.ini
 
 

@@ -1,0 +1,152 @@
+---
+- name: Configure VM
+  hosts: vm
+  become: yes
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+
+  tasks:
+    - name: Remove old Jenkins GPG keys
+      shell: apt-key list | grep -q "pkg.jenkins.io" && apt-key del $(apt-key list | grep "pkg.jenkins.io" | awk '{print $2}') || true
+
+    - name: Remove old Jenkins repository
+      file:
+        path: /etc/apt/sources.list.d/jenkins.list
+        state: absent
+
+    - name: Remove old SonarQube GPG keys
+      shell: apt-key list | grep -q "sonarsource.com" && apt-key del $(apt-key list | grep "sonarsource.com" | awk '{print $2}') || true
+
+    - name: Remove old SonarQube repository
+      file:
+        path: /etc/apt/sources.list.d/sonarqube.list
+        state: absent
+
+    - name: Remove old Kubernetes GPG keys
+      shell: apt-key list | grep -q "k8s.io" && apt-key del $(apt-key list | grep "k8s.io" | awk '{print $2}') || true
+
+    - name: Remove old Kubernetes repository
+      file:
+        path: /etc/apt/sources.list.d/kubernetes.list
+        state: absent
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Install required packages
+      apt:
+        name:
+          - software-properties-common
+          - python3
+          - python3-pip
+          - openjdk-11-jdk
+          - maven
+          - git
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+        state: present
+
+    - name: Install Node.js
+      shell: curl -fsSL https://deb.nodesource.com/setup_16.x | bash -
+      
+
+    - name: Install Node.js package
+      apt:
+        name: nodejs
+        state: present
+
+    - name: Download Jenkins GPG key
+      shell: wget -O /usr/share/keyrings/jenkins-keyring.asc https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key
+      
+
+    - name: Add Jenkins repository
+      shell: echo "deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/" | sudo tee /etc/apt/sources.list.d/jenkins.list > /dev/null
+      
+    - name: Update apt cache after adding Jenkins repository
+      apt:
+        update_cache: yes
+
+    - name: Install Jenkins package
+      apt:
+        name: jenkins
+        state: present
+
+    - name: Ensure Jenkins is started
+      systemd:
+        name: jenkins
+        enabled: yes
+        state: started
+
+    - name: Install SonarQube
+      shell: |
+        curl -fsSL https://binaries.sonarsource.com/Distribution/sonarqube/sonarqube-8.9.2.46101.zip -o /tmp/sonarqube.zip
+        apt-get install -y unzip
+        unzip /tmp/sonarqube.zip -d /opt/
+        mv /opt/sonarqube-8.9.2.46101 /opt/sonarqube
+        useradd -r -s /bin/false sonarqube
+        chown -R sonarqube: /opt/sonarqube
+      
+
+    - name: Create SonarQube service
+      copy:
+        dest: /etc/systemd/system/sonarqube.service
+        content: |
+          [Unit]
+          Description=SonarQube service
+          After=syslog.target network.target
+
+          [Service]
+          Type=forking
+          ExecStart=/opt/sonarqube/bin/linux-x86-64/sonar.sh start
+          ExecStop=/opt/sonarqube/bin/linux-x86-64/sonar.sh stop
+          User=sonarqube
+          Group=sonarqube
+          Restart=always
+          LimitNOFILE=65536
+          LimitNPROC=4096
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Start and enable SonarQube service
+      systemd:
+        name: sonarqube
+        enabled: yes
+        state: started
+
+    - name: Download the public signing key for the Kubernetes package repositories
+      shell: curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+      args:
+        creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+    - name: Allow unprivileged APT programs to read the keyring
+      file:
+        path: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+        mode: '0644'
+
+    - name: Add Kubernetes apt repository
+      shell: echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list
+      args:
+        creates: /etc/apt/sources.list.d/kubernetes.list
+
+    - name: Change permissions of Kubernetes apt repository file
+      file:
+        path: /etc/apt/sources.list.d/kubernetes.list
+        mode: '0644'
+
+    - name: Update apt package index
+      apt:
+        update_cache: yes
+
+    - name: Install kubectl
+      apt:
+        name: kubectl
+        state: present
+    - name: Ensure Jenkins is accessible
+      wait_for:
+        port: 8080
+        state: started
+        timeout: 300
