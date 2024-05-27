@@ -89,7 +89,13 @@
         useradd -r -s /bin/false sonarqube
         chown -R sonarqube: /opt/sonarqube
       
-
+    - name: Configure SonarQube to bind to all network interfaces
+      lineinfile:
+        path: /opt/sonarqube/conf/sonar.properties
+        regexp: '^#sonar.web.host='
+        line: 'sonar.web.host=0.0.0.0'
+        state: present
+        
     - name: Create SonarQube service
       copy:
         dest: /etc/systemd/system/sonarqube.service
