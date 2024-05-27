@@ -182,9 +182,9 @@ resource "azurerm_linux_virtual_machine" "my_terraform_vm" {
   provisioner "local-exec" {
   command = <<EOT
     cat > ../2_Setup_Software/inventory.ini <<EOF
-    [vm]
-    ${azurerm_linux_virtual_machine.my_terraform_vm.public_ip_address} ansible_ssh_private_key_file=~/.ssh/id_rsa ansible_user=${var.username} ansible_ssh_common_args='-o StrictHostKeyChecking=no'
-    EOF
+[vm]
+${azurerm_linux_virtual_machine.my_terraform_vm.public_ip_address} ansible_ssh_private_key_file=~/.ssh/id_rsa ansible_user=${var.username} ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+EOF
     cd ../2_Setup_Software && ansible-playbook -i inventory.ini main.yml
   EOT
 }
